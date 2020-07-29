@@ -30,11 +30,9 @@ if __name__ == "__main__":
 
             name = input('Name of person: ')
 
-            index = recognizer.get_subject_index(name)
-            if index == -1:
-                index = recognizer.add_subject(name)
+            index = recognizer.add_subject(name)
               
-            if not recognizer.add_training_image(face[0], index):
+            if not recognizer.add_training_image(face[0], name):
                 print('Failed to add training image')
           
         os.remove(image_path)

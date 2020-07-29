@@ -1,4 +1,5 @@
 import cv2
+import os
 import numpy as np
 from PIL import Image
 
@@ -165,3 +166,14 @@ def resize_image_PIL(filename: str=None, image=None, width: int=0, height: int=0
         return image.resize((int(x_pixels * ratio), int(y_pixels * ratio))) 
     except IOError:
         return None
+
+
+def is_image(file_path: str):
+    try:
+        exists = os.path.isfile(file_path)
+        if not exists:
+            return False
+        Image.open(file_path)
+    except IOError:
+        return False
+    return True

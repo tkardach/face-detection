@@ -1,7 +1,7 @@
 import sys
 sys.path.append('../')
 
-from face_detection import FaceDetectorInterface
+from face_recognition.face_detection import FaceDetectorInterface
 import cv2
 import numpy as np
 from shared.utility import *

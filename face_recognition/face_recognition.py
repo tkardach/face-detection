@@ -1,13 +1,17 @@
+import sys
+sys.path.append('../')
+
 import os
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from shared.image_mod import *
-from shared.utility import convertToRGB
-from face_detection_mtcnn import MTCNNFaceDetection
-from face_detection_dnn import DNNFaceDetection
-from face_detection_haar import HAARFaceDetection
+from shared.utility import convertToRGB, is_image
+from face_recognition.face_detection_mtcnn import MTCNNFaceDetection
+from face_recognition.face_detection_dnn import DNNFaceDetection
+from face_recognition.face_detection_haar import HAARFaceDetection
 from enum import Enum
+import uuid 
 
 
 class Detector(Enum):
@@ -21,16 +25,15 @@ class FaceRecognizer:
     """
 
     FACE_IMAGE_SIZE = 300
-    TRAINING_DATA_FOLDER = "training-data"
+    TRAINING_DATA_FOLDER = "face_recognition/training-data"
+    TRAINING_QUEUE = "face_recognition/train-images"
 
 
     def __init__(
         self,
-        subjects_file: str='subjects.txt',
         detector_type: Detector=Detector.MTCNN):
         """
         """
-        self.subjects_file = subjects_file
         self.__load_subjects()
         if detector_type == Detector.DNN:
             self.detector = DNNFaceDetection()
@@ -49,8 +52,18 @@ class FaceRecognizer:
         """
         Reload the subjects from the subjects file into a list
         """
-        with open(self.subjects_file) as f:
-            self.subjects = f.read().splitlines()
+        self.subjects = os.listdir(self.TRAINING_DATA_FOLDER)
+
+
+    def __check_face_for_training(self, face_image: np.ndarray) -> bool:
+        height, width = face_image.shape[:2]
+
+        if width != height:
+            print('prepare_face_image_training: Height %d is not equal to width %d' % (height, width))
+            return False
+        
+        return True
+        
 
 
     def __prepare_face_image_training(self, face_image: np.ndarray) -> np.ndarray:
@@ -70,15 +83,13 @@ class FaceRecognizer:
         None
             If the face image is not square, we will not use it
         """
-        height, width = face_image.shape[:2]
+        if not self.__check_face_for_training(face_image):
+            return None
 
-        if width != height:
-            print('prepare_face_image_training: Height %d is not equal to width %d' % (height, width))
-            return None
-        
-        if width < self.FACE_IMAGE_SIZE:
-            print('prepare_face_image_training: Image dimension is smaller than minimum %d' % (self.FACE_IMAGE_SIZE))
-            return None
+        # Removing this for now. Might be beneficial to have smaller res images
+        # if width < self.FACE_IMAGE_SIZE:
+        #     print('prepare_face_image_training: Image dimension is smaller than minimum %d' % (self.FACE_IMAGE_SIZE))
+        #     return None
 
         gray = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
         return cv2.resize(gray, (self.FACE_IMAGE_SIZE, self.FACE_IMAGE_SIZE))
@@ -128,13 +139,13 @@ class FaceRecognizer:
 
         # For each subject, gather their faces and respective labels
         for dir_name in dirs:
-            if not dir_name.startswith('s'):
-                continue
-            
-            label = int(dir_name.replace('s', ''))
             subject_dir_path = self.TRAINING_DATA_FOLDER + "/" + dir_name
 
             subject_images_names = os.listdir(subject_dir_path)
+            
+            label = self.get_subject_index(dir_name)
+            if label == -1:
+                continue
 
             for image_name in subject_images_names:
                 if image_name.startswith('.'):
@@ -248,28 +259,27 @@ class FaceRecognizer:
         """
         if name == '':
             return -1
+
+        # Make sure our image directory is in-sync with our subjects list
+        self.__load_subjects()
+
         # Check if the subject already exists
         subject_name = self.__generate_subject_name(name)
         if subject_name in self.subjects:
             return self.subjects.index(subject_name)
         
-        # Make sure our image directory is in-sync with our subjects list
-        self.__load_subjects()
         samples = os.listdir(self.TRAINING_DATA_FOLDER)
         if len(samples) != len(self.subjects):
             raise Exception('Number of training directories does not match number of subjects')
 
-        # Append the new subject name and return their index
-        with open(self.subjects_file, 'a') as f:
-            f.write('\n%s' % subject_name)
-        
-        os.mkdir('%s/s%d' % (self.TRAINING_DATA_FOLDER, len(self.subjects)))
+        os.mkdir('%s/%s' % (self.TRAINING_DATA_FOLDER, subject_name))
 
         self.__load_subjects()
+        self.retrain_recognizer()
         return self.subjects.index(subject_name)
 
 
-    def add_training_image(self, face, label_index):
+    def add_training_image(self, face, subject_name):
         """
         Add an image to the trainer under the given label. Converts the image to the recognizer's standard
 
@@ -291,13 +301,22 @@ class FaceRecognizer:
                 2. Face is smaller than specified dimensions
             If the subject does not exist in the training data
         """
+        # Make sure our image directory is in-sync with our subjects list
+        self.__load_subjects()
+
+        if subject_name not in self.subjects:
+            return False
+
         prepared_face = self.__prepare_face_image_training(face)
         
         if prepared_face is None:
             return False
 
+        # Check if the subject already exists
+        label = self.__generate_subject_name(subject_name)
+
         # Create subject directory if it does not exist
-        dest = '%s/s%d' % (self.TRAINING_DATA_FOLDER, label_index)
+        dest = '%s/%s' % (self.TRAINING_DATA_FOLDER, label)
         if not os.path.exists(dest):
             print('add_training_image: Failed because directory "%s" does not exist' % dest)
             return False
@@ -311,6 +330,47 @@ class FaceRecognizer:
         return True
 
 
+    def add_image_to_training_queue(self, image_file):
+        if not is_image(image_file):
+            return False
+        
+        image_name = os.path.basename(image_file)
+        
+        faces = self.extract_faces(image_file)
+
+        files = []
+        for face in faces:
+            accepted = self.__check_face_for_training(face[0])
+            if not accepted:
+                files.append('Face rejected for training')
+                continue
+
+            name = uuid.uuid4().hex[:6].upper()
+            dest = '%s/%s.jpeg' % (self.TRAINING_QUEUE, name)
+            cv2.imwrite(dest, face[0])
+            files.append(os.path.abspath(dest))
+
+        return files
+
+
+    def add_training_image_from_queue(self, face_file, subject_name):
+        name = self.__generate_subject_name(subject_name)
+        index = self.get_subject_index(name)
+
+        if index == -1:
+            index = self.add_subject(subject_name)
+
+        face = cv2.imread(face_file)
+
+        added = self.add_training_image(face, name)
+
+        if added:
+            os.remove(face_file)
+        
+        return added
+
+
+
     def retrain_recognizer(self):
         """
         Retrain the recognizer using the training data
@@ -320,7 +380,7 @@ class FaceRecognizer:
             self.recognizer.train(faces, labels)
 
 
-    def predict(self, image_file, distance: float=50):
+    def predict(self, image_file, distance: float=45):
         """
         Predict the faces in the image, return the faces 
         """

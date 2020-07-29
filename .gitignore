@@ -2,7 +2,11 @@
 __pycache__
 *.jpg
 subjects.txt
+
 train-images/*
 testing-data/*
 training-data/*
 detection-tests/*
+
+*.jpeg
+*.jpg
