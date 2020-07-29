@@ -1,6 +1,9 @@
-from image_mod import draw_rectangle
+import sys
+sys.path.append('../')
+
+from shared.image_mod import draw_rectangle
 from face_detection import FaceDetectorInterface
-from utility import get_image_dimensions, resize_image, convertToRGB
+from shared.utility import get_image_dimensions, resize_image, convertToRGB
 import cv2
 import numpy as np
 
@@ -121,6 +124,58 @@ class HAARFaceDetection(FaceDetectorInterface):
         
         return self.__revert_coordinates(faces, resized, original)
 
+    def detect_faces_square(self, filename: str) -> list:
+        """
+        Returns a list of all square coordinates of each face found
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+        rectangles
+            An array of squares of the face locations
+        """
+        # Convert to grayscale (OpenCV only works on grayscale images)
+        resized, original = self.__prepare_image(filename)
+        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+        cv2.equalizeHist(gray, gray)
+
+        # Detect faces
+        faces = self.f_cascade.detectMultiScale(
+            gray,
+            scaleFactor=self.scale_factor,
+            minNeighbors=self.min_neighbors,
+            minSize=self.min_size)
+
+
+        faces = np.array(faces)
+        if (faces.size == 0):
+            return faces
+
+        faces = self.__revert_coordinates(faces, resized, original)
+
+        h, w = original.shape[:2]
+
+        # Set width and height to the larger of the 2 values (make square)
+        faces[:,2][faces[:,2] < faces[:,3]] = faces[:,3][faces[:,2] < faces[:,3]]
+        faces[:,3][faces[:,3] < faces[:,2]] = faces[:,2][faces[:,3] < faces[:,2]]
+
+        # Convert to common return value (startX,startY,endX,endY)
+        # from (startX,startY,width, height)
+        faces[:, 2] = faces[:, 0] + faces[:, 2]
+        faces[:, 3] = faces[:, 1] + faces[:, 3]
+        # For any face rectangle that exceeds the min limit (0), set to 0
+        faces[faces < 0] = 0
+        # For any face rectangle that exceeds max X limit, set to image width
+        faces[:, 0][faces[:, 0] > w] = w
+        faces[:, 2][faces[:, 2] > w] = w
+        # For any face rectangle that exceeds max Y limit, set to image height
+        faces[:, 1][faces[:, 1] > h] = h
+        faces[:, 3][faces[:, 3] > h] = h
+        
+        return faces
+
     def extract_faces(self, filename: str) -> list:
         """
         Returns a list of tuples with the face image and its 
@@ -139,6 +194,34 @@ class HAARFaceDetection(FaceDetectorInterface):
         """
         # find coordinates of all faces in image
         faces = self.detect_faces(filename)
+
+        result_list = []
+
+        image = cv2.imread(filename)
+        # Extract faces using the faces coordinates
+        for face in faces:
+            x1, y1, x2, y2 = face
+            result_list.append((image[y1:y2, x1:x2], face))
+        return result_list
+
+    def extract_faces_square(self, filename: str) -> list:
+        """
+        Returns a list of tuples with the face image and its 
+        square coordinates in the original image.
+
+        Parameters
+        ----------
+        filename : string
+          Path to the image file
+
+        Returns
+        -------
+        list(tuple(np.array, (startX, startY, endX, endY)))
+          List of all faces in the form of a tuple with the face image 
+          (numpy array) and face coordinates in the original image
+        """
+        # find coordinates of all faces in image
+        faces = self.detect_faces_square(filename)
 
         result_list = []
 
@@ -188,7 +271,7 @@ if __name__ == "__main__":
 
         root/
         |
-        |--- tests/
+        |--- detection-tests/
              |--- {test #}_{# of expected faces}_.jpg
              |--- ...
         """, formatter_class=RawTextHelpFormatter)
@@ -215,7 +298,7 @@ if __name__ == "__main__":
             min_size: tuple=(20,20),
             show_faces: bool=False,
             time_analysis: bool=False):
-        dirPath = 'tests'
+        dirPath = 'detection-tests'
         images = os.listdir(dirPath)
 
         total = 0

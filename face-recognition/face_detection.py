@@ -32,11 +32,46 @@ class FaceDetectorInterface:
           List of all face coordinates in the original image
         """
         pass
+    
+    def detect_faces_square(self, filename: str) -> list:
+        """
+        Returns a list of all square coordinates of each face found
+
+        Parameters
+        ----------
+        filename : string
+          Path to the image file
+
+        Returns
+        -------
+        list((startX, startY, endX, endY))
+          List of all face coordinates in the original image
+        """
+        pass
 
     def extract_faces(self, filename: str) -> list:
         """
         Returns a list of tuples with the face image and its 
         rectangle coordinates in the original image.
+
+        Parameters
+        ----------
+        filename : string
+          Path to the image file
+
+        Returns
+        -------
+        list(tuple(np.array, (startX, startY, endX, endY)))
+          List of all faces in the form of a tuple with the face image 
+          (numpy array) and face coordinates in the original image
+        pass
+        """
+        pass
+
+    def extract_faces_square(self, filename: str) -> list:
+        """
+        Returns a list of tuples with the face image and its 
+        square coordinates in the original image.
 
         Parameters
         ----------

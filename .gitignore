@@ -1,7 +1,8 @@
-training-data
-tests
 .vscode
 __pycache__
 *.jpg
 subjects.txt
-train-images
+train-images/*
+testing-data/*
+training-data/*
+detection-tests/*

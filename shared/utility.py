@@ -3,7 +3,7 @@ import numpy as np
 from PIL import Image
 
 
-def convertToRGB(img):
+def convertToRGB(img: np.ndarray):
     """Returns the image in RGB color format
 
     Parameters

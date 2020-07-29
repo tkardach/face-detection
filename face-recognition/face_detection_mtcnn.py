@@ -1,8 +1,11 @@
+import sys
+sys.path.append('../')
+
 from face_detection import FaceDetectorInterface
 from mtcnn.mtcnn import MTCNN
-from utility import *
+from shared.utility import *
 from PIL import Image
-from image_mod import draw_rectangle
+from shared.image_mod import draw_rectangle
 import numpy as np
 import cv2
 
@@ -49,13 +52,13 @@ class MTCNNFaceDetection(FaceDetectorInterface):
         else:
             return original_image, original_image
 
-    def __revert_coordinates_PIL(self, coords: list, from_image, to_image):
+    def __revert_coordinates_PIL(self, coords: np.ndarray, from_image, to_image) -> np.ndarray:
         from_x, from_y = from_image.size
         to_x, to_y = to_image.size
 
         ratio = to_x / from_x
 
-        return [(int(x1*ratio), int(y1*ratio), int(x2*ratio), int(y2*ratio)) for (x1, y1, x2, y2) in coords]
+        return (coords * ratio).astype(int)
 
     def __prepare_image(self, filename: str):
         width, height = get_image_dimensions(filename=filename)
@@ -70,13 +73,13 @@ class MTCNNFaceDetection(FaceDetectorInterface):
         else:
             return original_image, original_image
 
-    def __revert_coordinates(self, coords: list, from_image, to_image):
-        from_x, from_y = get_image_dimensions(image=from_image)
-        to_x, to_y = get_image_dimensions(image=to_image)
+    def __revert_coordinates(self, coords: np.ndarray, from_image, to_image) -> np.ndarray:
+        from_x, from_y = from_image.shape[:2]
+        to_x, to_y = to_image.shape[:2]
 
         ratio = to_x / from_x
 
-        return [(int(x1*ratio), int(y1*ratio), int(x2*ratio), int(y2*ratio)) for (x1, y1, x2, y2) in coords]
+        return (coords * ratio).astype(int)
 
     def detect_faces(self, filename: str) -> list:
         """
@@ -116,6 +119,54 @@ class MTCNNFaceDetection(FaceDetectorInterface):
         # convert the face coordinates back to the original coordinate system
         return self.__revert_coordinates_PIL(faces, resized, original)
 
+    def detect_faces_square(self, filename: str) -> np.ndarray:
+        """
+        Returns a list of all square coordinates of each face found
+
+        Parameters
+        ----------
+        filename : string
+          Path to the image file
+
+        Returns
+        -------
+        list((startX, startY, endX, endY))
+          List of all face coordinates in the image
+        """
+        # load image from file
+        resized, original = self.__prepare_image_PIL(filename)
+        # detect faces in the image
+        results = self.__detector.detect_faces(np.array(resized))
+        faces = [i['box'] for i in results]
+        faces = np.array(faces)
+
+        if len(faces) == 0:
+            return faces
+
+        # convert the face coordinates back to the original coordinate system
+        faces = self.__revert_coordinates_PIL(faces, resized, original)
+
+        w, h = original.size
+
+        # Set width and height to the larger of the 2 values (make square)
+        faces[:,2][faces[:,2] < faces[:,3]] = faces[:,3][faces[:,2] < faces[:,3]]
+        faces[:,3][faces[:,3] < faces[:,2]] = faces[:,2][faces[:,3] < faces[:,2]]
+
+        # Convert to common return value (startX,startY,endX,endY)
+        # from (startX,startY,width, height)
+        faces[:, 2] = faces[:, 0] + faces[:, 2]
+        faces[:, 3] = faces[:, 1] + faces[:, 3]
+        # For any face rectangle that exceeds the min limit (0), set to 0
+        faces[faces < 0] = 0
+        # For any face rectangle that exceeds max X limit, set to image width
+        faces[:, 0][faces[:, 0] > w] = w
+        faces[:, 2][faces[:, 2] > w] = w
+        # For any face rectangle that exceeds max Y limit, set to image height
+        faces[:, 1][faces[:, 1] > h] = h
+        faces[:, 3][faces[:, 3] > h] = h
+        
+        return faces
+
     def extract_faces(self, filename: str) -> list:
         """
         Returns a list of tuples with the face image and its 
@@ -135,6 +186,35 @@ class MTCNNFaceDetection(FaceDetectorInterface):
         # find coordinates of all faces in image
         faces = self.detect_faces(filename)
 
+        result_list = []
+
+        image = cv2.imread(filename)
+        x_pixels, y_pixels = get_image_dimensions(image=image)
+        # Extract faces using the faces coordinates
+        for face in faces:
+            x1, y1, x2, y2 = face
+            result_list.append((image[y1:y2, x1:x2], (x1, y1, x2, y2)))
+        return result_list
+
+    def extract_faces_square(self, filename: str) -> list:
+        """
+        Returns a list of tuples with the face image and its 
+        square coordinates in the original image.
+
+        Parameters
+        ----------
+        filename : string
+          Path to the image file
+
+        Returns
+        -------
+        list(tuple(np.array, (startX, startY, endX, endY)))
+          List of all faces in the form of a tuple with the face image 
+          (numpy array) and face coordinates in the original image
+        pass
+        """
+        # find coordinates of all faces in image
+        faces = self.detect_faces_square(filename)
         result_list = []
 
         image = cv2.imread(filename)
@@ -183,7 +263,7 @@ if __name__ == "__main__":
 
         root/
         |
-        |--- tests/
+        |--- detection-tests/
              |--- {test #}_{# of expected faces}_.jpg
              |--- ...
         """, formatter_class=RawTextHelpFormatter)
@@ -214,7 +294,7 @@ if __name__ == "__main__":
         scale_factor: float = 0.709,
         show_faces: bool=False,
         time_analysis: bool=False):
-        dirPath = 'tests'
+        dirPath = 'detection-tests'
         images = os.listdir(dirPath)
 
         total = 0
