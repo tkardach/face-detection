@@ -168,12 +168,20 @@ def resize_image_PIL(filename: str=None, image=None, width: int=0, height: int=0
         return None
 
 
+def does_file_exist(file_path: str):
+    exists = os.path.isfile(file_path)
+    if not exists:
+        return False
+    return True
+
+
 def is_image(file_path: str):
     try:
-        exists = os.path.isfile(file_path)
-        if not exists:
+        if not does_file_exist(file_path):
             return False
-        Image.open(file_path)
+        image = Image.open(file_path)
+        image.close()
     except IOError:
         return False
+
     return True

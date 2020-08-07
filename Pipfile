@@ -17,6 +17,7 @@ mtcnn = "*"
 tensorflow = "*"
 pillow = "*"
 flask = "*"
+dlib = "*"
 
 [requires]
 python_version = "3.8"

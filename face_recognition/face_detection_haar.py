@@ -92,39 +92,6 @@ class HAARFaceDetection(FaceDetectorInterface):
         rectangles
             An array of rectangles of the face locations
         """
-        # Convert to grayscale (OpenCV only works on grayscale images)
-        resized, original = self.__prepare_image(filename)
-        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-        cv2.equalizeHist(gray, gray)
-
-        # Detect faces
-        faces = self.f_cascade.detectMultiScale(
-            gray,
-            scaleFactor=self.scale_factor,
-            minNeighbors=self.min_neighbors,
-            minSize=self.min_size)
-
-        h, w = resized.shape[:2]
-
-        faces = np.array(faces)
-        if (faces.size == 0):
-            return faces
-        # Convert to common return value (startX,startY,endX,endY)
-        # from (startX,startY,width, height)
-        faces[:, 2] = faces[:, 0] + faces[:, 2]
-        faces[:, 3] = faces[:, 1] + faces[:, 3]
-        # For any face rectangle that exceeds the min limit (0), set to 0
-        faces[faces < 0] = 0
-        # For any face rectangle that exceeds max X limit, set to image width
-        faces[:, 0][faces[:, 0] > w] = w
-        faces[:, 2][faces[:, 2] > w] = w
-        # For any face rectangle that exceeds max Y limit, set to image height
-        faces[:, 1][faces[:, 1] > h] = h
-        faces[:, 3][faces[:, 3] > h] = h
-        
-        return self.__revert_coordinates(faces, resized, original)
-
-    def detect_faces_square(self, filename: str) -> list:
         """
         Returns a list of all square coordinates of each face found
 
@@ -204,35 +171,8 @@ class HAARFaceDetection(FaceDetectorInterface):
             result_list.append((image[y1:y2, x1:x2], face))
         return result_list
 
-    def extract_faces_square(self, filename: str) -> list:
-        """
-        Returns a list of tuples with the face image and its 
-        square coordinates in the original image.
 
-        Parameters
-        ----------
-        filename : string
-          Path to the image file
-
-        Returns
-        -------
-        list(tuple(np.array, (startX, startY, endX, endY)))
-          List of all faces in the form of a tuple with the face image 
-          (numpy array) and face coordinates in the original image
-        """
-        # find coordinates of all faces in image
-        faces = self.detect_faces_square(filename)
-
-        result_list = []
-
-        image = cv2.imread(filename)
-        # Extract faces using the faces coordinates
-        for face in faces:
-            x1, y1, x2, y2 = face
-            result_list.append((image[y1:y2, x1:x2], face))
-        return result_list
-
-    def find_faces_on_image(self, filename: str):
+    def show_faces(self, filename: str):
         """
         Returns the original image with all found faces located with a rectangle
 
@@ -328,7 +268,7 @@ if __name__ == "__main__":
             faces = detector.detect_faces(imagePath)
 
             if show_faces:
-                plt.imshow(convertToRGB(detector.find_faces_on_image(imagePath)))
+                plt.imshow(convertToRGB(detector.show_faces(imagePath)))
                 plt.show()
 
             total += numFaces

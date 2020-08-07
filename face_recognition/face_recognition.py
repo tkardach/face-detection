@@ -7,17 +7,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from shared.image_mod import *
 from shared.utility import convertToRGB, is_image
-from face_recognition.face_detection_mtcnn import MTCNNFaceDetection
-from face_recognition.face_detection_dnn import DNNFaceDetection
-from face_recognition.face_detection_haar import HAARFaceDetection
+from shared.exceptions import *
+from shared.exceptions import *
+from face_recognition.face_detection_hog import HOGFaceDetection
 from enum import Enum
 import uuid 
-
-
-class Detector(Enum):
-    MTCNN = 0,
-    HAAR = 1,
-    DNN = 2
 
 
 class FaceRecognizer:
@@ -31,21 +25,59 @@ class FaceRecognizer:
 
     def __init__(
         self,
-        detector_type: Detector=Detector.MTCNN):
+        training_data: str = None,
+        training_queue: str = None):
         """
         """
-        self.__load_subjects()
-        if detector_type == Detector.DNN:
-            self.detector = DNNFaceDetection()
-        elif detector_type == Detector.HAAR:
-            self.detector = HAARFaceDetection()
-        else:
-            self.detector = MTCNNFaceDetection()
+        if training_data is not None:
+            self.TRAINING_DATA_FOLDER = training_data
+        if training_queue is not None:
+            self.TRAINING_QUEUE = training_queue
+        
+        self.detector = HOGFaceDetection()
 
         self.recognizer = cv2.face.LBPHFaceRecognizer_create()
         
+        # Initialize the subjects string
+        self.__load_subjects()
         # Train the recognizer with our training data
         self.retrain_recognizer()
+
+
+    @staticmethod
+    def generate_subject_name(name: str):
+        """
+        Generate a normalized subject name
+
+        Parameters
+        ----------
+        name: str
+            Subject name to be converted to the normal convention
+
+        Returns
+        -------
+        str
+            Subject name in the normalized format
+        """
+        return str.lower(name.replace(' ', '_'))
+
+
+    @staticmethod
+    def generate_subject_title(name: str):
+        """
+        Get the subject title from the normalized subject name
+
+        Parameters
+        ----------
+        name: str
+            Normalized subject name to be converted to a title
+
+        Returns
+        -------
+        str
+            Title name of the given subject name string
+        """
+        return name.replace('_',' ').title()
 
 
     def __load_subjects(self):
@@ -54,73 +86,6 @@ class FaceRecognizer:
         """
         self.subjects = os.listdir(self.TRAINING_DATA_FOLDER)
 
-
-    def __check_face_for_training(self, face_image: np.ndarray) -> bool:
-        height, width = face_image.shape[:2]
-
-        if width != height:
-            print('prepare_face_image_training: Height %d is not equal to width %d' % (height, width))
-            return False
-        
-        return True
-        
-
-
-    def __prepare_face_image_training(self, face_image: np.ndarray) -> np.ndarray:
-        """
-        Prepare a face image to the recognizer norm (used for training)
-
-        Parameters
-        ----------
-        face_image: np.array
-            The face image we will convert
-        
-        Returns
-        -------
-        resized: np.array
-            The new image conforming to the FaceRecognizers standard
-        
-        None
-            If the face image is not square, we will not use it
-        """
-        if not self.__check_face_for_training(face_image):
-            return None
-
-        # Removing this for now. Might be beneficial to have smaller res images
-        # if width < self.FACE_IMAGE_SIZE:
-        #     print('prepare_face_image_training: Image dimension is smaller than minimum %d' % (self.FACE_IMAGE_SIZE))
-        #     return None
-
-        gray = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
-        return cv2.resize(gray, (self.FACE_IMAGE_SIZE, self.FACE_IMAGE_SIZE))
-        
-
-    def __prepare_face_image_testing(self, face_image: np.ndarray) -> np.ndarray:
-        """
-        Prepare a face image to the recognizer norm (used for recognizing)
-
-        Parameters
-        ----------
-        face_image: np.array
-            The face image we will convert
-        
-        Returns
-        -------
-        resized: np.array
-            The new image conforming to the FaceRecognizers standard
-        """
-        height, width = face_image.shape[:2]
-
-        if height == 0 or width == 0:
-            None
-
-        print(width, height)
-        width_ratio = float(self.FACE_IMAGE_SIZE) / width
-        height_ratio = float(self.FACE_IMAGE_SIZE) / height
-
-        gray = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
-        return cv2.resize(gray, None, fx=width_ratio, fy=height_ratio)
-        
 
     def __prepare_training_data(self):
         """
@@ -162,42 +127,8 @@ class FaceRecognizer:
         return faces, np.array(labels)
 
 
-    def __generate_subject_name(self, name):
-        """
-        Generate a normalized subject name
-
-        Parameters
-        ----------
-        name: str
-            Subject name to be converted to the normal convention
-
-        Returns
-        -------
-        str
-            Subject name in the normalized format
-        """
-        return str.lower(name.replace(' ', '_'))
-
-
-    def __generate_subject_title(self, name):
-        """
-        Get the subject title from the normalized subject name
-
-        Parameters
-        ----------
-        name: str
-            Normalized subject name to be converted to a title
-
-        Returns
-        -------
-        str
-            Title name of the given subject name string
-        """
-        return name.replace('_',' ').title()
-
-
-    def extract_faces(self, image_file):
-        return self.detector.extract_faces_square(image_file)
+    def extract_faces(self, image_file: str):
+        return self.detector.extract_faces(image_file)
 
 
     def get_subjects(self):
@@ -209,10 +140,10 @@ class FaceRecognizer:
         list(tuple) : list(index, name)
             A list of each subject's index and their title
         """
-        return [(i, self.__generate_subject_title(name)) for (i, name) in enumerate(self.subjects)]
+        return [(i, FaceRecognizer.generate_subject_title(name)) for (i, name) in enumerate(self.subjects)]
 
 
-    def get_subject_index(self, name):
+    def get_subject_index(self, name: str):
         """
         Return the index/label of the subject
 
@@ -230,14 +161,14 @@ class FaceRecognizer:
             If the subject was not found
         """
         # Check if the subject already exists
-        subject_name = self.__generate_subject_name(name)
+        subject_name = FaceRecognizer.generate_subject_name(name)
         if subject_name in self.subjects:
             return self.subjects.index(subject_name)
         
         return -1
 
 
-    def add_subject(self, name):
+    def add_subject(self, name: str):
         """
         Add a new subject to the trainer and return their index label
 
@@ -264,7 +195,7 @@ class FaceRecognizer:
         self.__load_subjects()
 
         # Check if the subject already exists
-        subject_name = self.__generate_subject_name(name)
+        subject_name = FaceRecognizer.generate_subject_name(name)
         if subject_name in self.subjects:
             return self.subjects.index(subject_name)
         
@@ -279,9 +210,9 @@ class FaceRecognizer:
         return self.subjects.index(subject_name)
 
 
-    def add_training_image(self, face, subject_name):
+    def add_training_image(self, face: np.ndarray, subject_name: str):
         """
-        Add an image to the trainer under the given label. Converts the image to the recognizer's standard
+        Add an image to the trainer under the given label. 
 
         Parameters
         ----------
@@ -294,45 +225,36 @@ class FaceRecognizer:
         -------
         True
             If the image was successfully added to the training data
-
-        False
-            If we could not prepare the face for training:
-                1. Face is not square
-                2. Face is smaller than specified dimensions
-            If the subject does not exist in the training data
         """
+        if not isinstance(face, np.ndarray):
+            raise TypeError('add_training_image: parameter "face" must be of type numpy.ndarray')
+
         # Make sure our image directory is in-sync with our subjects list
         self.__load_subjects()
 
         if subject_name not in self.subjects:
-            return False
-
-        prepared_face = self.__prepare_face_image_training(face)
-        
-        if prepared_face is None:
-            return False
+            self.add_subject(subject_name)
 
         # Check if the subject already exists
-        label = self.__generate_subject_name(subject_name)
+        label = FaceRecognizer.generate_subject_name(subject_name)
 
         # Create subject directory if it does not exist
         dest = '%s/%s' % (self.TRAINING_DATA_FOLDER, label)
         if not os.path.exists(dest):
-            print('add_training_image: Failed because directory "%s" does not exist' % dest)
-            return False
+            raise FileNotFoundError('add_training_image: Failed because directory "%s" does not exist' % dest)
 
         # Find the largest integer value of the training data
         samples = os.listdir(dest)
         
         image_path = '%s/%d.jpg' % (dest, len(samples))
-        cv2.imwrite(image_path, prepared_face)
+        cv2.imwrite(image_path, face)
 
         return True
 
 
-    def add_image_to_training_queue(self, image_file):
+    def add_image_to_training_queue(self, image_file: str):
         if not is_image(image_file):
-            return False
+            raise FileNotAnImage('add_image_to_training_queue: %s either does not exist, or is not an image' % image_file)
         
         image_name = os.path.basename(image_file)
         
@@ -340,11 +262,6 @@ class FaceRecognizer:
 
         files = []
         for face in faces:
-            accepted = self.__check_face_for_training(face[0])
-            if not accepted:
-                files.append('Face rejected for training')
-                continue
-
             name = uuid.uuid4().hex[:6].upper()
             dest = '%s/%s.jpeg' % (self.TRAINING_QUEUE, name)
             cv2.imwrite(dest, face[0])
@@ -353,22 +270,18 @@ class FaceRecognizer:
         return files
 
 
-    def add_training_image_from_queue(self, face_file, subject_name):
-        name = self.__generate_subject_name(subject_name)
-        index = self.get_subject_index(name)
-
-        if index == -1:
-            index = self.add_subject(subject_name)
+    def add_training_image_from_queue(self, face_file: str, subject_name: str):
+        if not is_image(face_file):
+            raise FileNotAnImage('add_training_image_from_queue: %s is not an image' % face_file)
 
         face = cv2.imread(face_file)
 
-        added = self.add_training_image(face, name)
+        added = self.add_training_image(face, subject_name)
 
         if added:
             os.remove(face_file)
         
         return added
-
 
 
     def retrain_recognizer(self):
@@ -380,12 +293,11 @@ class FaceRecognizer:
             self.recognizer.train(faces, labels)
 
 
-    def predict(self, image_file, distance: float=45):
+    def predict(self, image_file: str, distance: float=45):
         """
         Predict the faces in the image, return the faces 
         """
-        faces = self.detector.extract_faces_square(image_file)
-        faces = [(self.__prepare_face_image_testing(face[0]), face[1]) for face in faces]
+        faces = self.detector.extract_faces(image_file)
 
         results = []
         for i in range(len(faces)):
@@ -395,16 +307,15 @@ class FaceRecognizer:
 
             label = self.recognizer.predict(face[0])
             
-            print(label)
             if (label[0] == 0): 
                 continue
             if (label[1] < distance):
                 rect = face[1]
-                label_text = self.__generate_subject_title(self.subjects[label[0]])
+                label_text = FaceRecognizer.generate_subject_title(self.subjects[label[0]])
                 results.append((label_text, rect))
             else:
                 rect = face[1]
-                label_text = self.__generate_subject_title(self.subjects[label[0]])
+                label_text = FaceRecognizer.generate_subject_title(self.subjects[label[0]])
                 results.append(('', rect))
 
         return results
