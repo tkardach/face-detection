@@ -13,19 +13,31 @@ import dlib
 
 class HOGFaceDetection(FaceDetectorInterface):
     """
+    Use dlib's Histogram of Oriented Gradients (HOG) method for detecting faces, using 5 facial landmarks
+    prediction.
     """
     LONG_SIDE_PIXELS = 500
     FIVE_LANDMARKS_PREDICTOR = "face_recognition/model/shape_predictor_5_face_landmarks.dat"
 
     def __init__(self):
-        """
-        """
         self.detector = dlib.get_frontal_face_detector()
         self.aligner = FaceAlignment()
         self.predictor = dlib.shape_predictor(self.FIVE_LANDMARKS_PREDICTOR)
 
 
     def __detect_faces_dlib(self, filename: str) -> list:
+        """
+        Detect faces and return the face rectangles 
+
+        Parameters
+        ----------
+        filename: str
+
+        Returns
+        -------
+        tuple
+            Tuple of (face rectangles, original image, gray image)
+        """
         if not does_file_exist(filename):
             raise FileNotFoundError('__detect_faces_dlib: File %s does not exist' % filename)
         if not is_image(filename):

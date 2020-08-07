@@ -8,7 +8,6 @@ import numpy as np
 from shared.image_mod import *
 from shared.utility import convertToRGB, is_image
 from shared.exceptions import *
-from shared.exceptions import *
 from face_recognition.face_detection_hog import HOGFaceDetection
 from enum import Enum
 import uuid 
@@ -28,6 +27,15 @@ class FaceRecognizer:
         training_data: str = None,
         training_queue: str = None):
         """
+        Initialize the face recognizer.
+
+        Parameters
+        ----------
+        training_data: str
+            Directory where all of the training data is stored
+        
+        training_queue: str
+            Directory where the face images for the training queue are stored 
         """
         if training_data is not None:
             self.TRAINING_DATA_FOLDER = training_data
@@ -35,7 +43,6 @@ class FaceRecognizer:
             self.TRAINING_QUEUE = training_queue
         
         self.detector = HOGFaceDetection()
-
         self.recognizer = cv2.face.LBPHFaceRecognizer_create()
         
         # Initialize the subjects string
@@ -111,7 +118,8 @@ class FaceRecognizer:
             label = self.get_subject_index(dir_name)
             if label == -1:
                 continue
-
+            
+            # Add all face images for this subject 
             for image_name in subject_images_names:
                 if image_name.startswith('.'):
                     continue
@@ -128,6 +136,19 @@ class FaceRecognizer:
 
 
     def extract_faces(self, image_file: str):
+        """
+        Get all the detected face images within the given image
+
+        Parameters
+        ----------
+        image_file: str
+            File path to the image
+        
+        Returns
+        -------
+        list(tuple)
+            List of all faces with their rectangular coordinates (x, y, w, h)
+        """
         return self.detector.extract_faces(image_file)
 
 
@@ -199,6 +220,7 @@ class FaceRecognizer:
         if subject_name in self.subjects:
             return self.subjects.index(subject_name)
         
+        # Make sure the subject's folder exists
         samples = os.listdir(self.TRAINING_DATA_FOLDER)
         if len(samples) != len(self.subjects):
             raise Exception('Number of training directories does not match number of subjects')
@@ -253,13 +275,26 @@ class FaceRecognizer:
 
 
     def add_image_to_training_queue(self, image_file: str):
+        """
+        Add the image to the training data. This will extract all faces from the 
+        parameter image and will store the face images in a training queue.
+
+        Parameters
+        ----------
+        image_file: str
+            File path to the image
+
+        Returns
+        -------
+        list(str)
+            List of paths to face files added to training queue
+        """
         if not is_image(image_file):
             raise FileNotAnImage('add_image_to_training_queue: %s either does not exist, or is not an image' % image_file)
         
         image_name = os.path.basename(image_file)
         
         faces = self.extract_faces(image_file)
-
         files = []
         for face in faces:
             name = uuid.uuid4().hex[:6].upper()
@@ -271,6 +306,23 @@ class FaceRecognizer:
 
 
     def add_training_image_from_queue(self, face_file: str, subject_name: str):
+        """
+        Train an image from the training queue. This method takes the file specified from the training queue
+        and adds it to a subject's training data. The face image in the training queue is removed afterwards.
+
+        Parameters
+        ----------
+        face_file: str
+            File path to the face being trainged
+        subject_name: str
+            Name of the subject to associate the face with
+        
+        Returns
+        -------
+        boolean
+            True if the image was added successfully
+            False if otherwise
+        """
         if not is_image(face_file):
             raise FileNotAnImage('add_training_image_from_queue: %s is not an image' % face_file)
 
